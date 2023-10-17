@@ -21,35 +21,50 @@ resource "aws_vpc" "cloudx" {
 }
 
 resource "aws_subnet" "public_a" {
+  
   vpc_id     = aws_vpc.cloudx.id
   cidr_block = var.public_subnet_cidrs[0]
   availability_zone = var.azs[0]
+  tags = {
+    Name = "public_a"
+  }
 }
 
 resource "aws_subnet" "public_b" {
   vpc_id     = aws_vpc.cloudx.id
   cidr_block = var.public_subnet_cidrs[1]
   availability_zone = var.azs[1]
+   tags = {
+    Name = "public_b"
+  }
 }
 
 resource "aws_subnet" "public_c" {
   vpc_id     = aws_vpc.cloudx.id
   cidr_block = var.public_subnet_cidrs[2]
   availability_zone = var.azs[2]
+   tags = {
+    Name = "public_c"
+  }
 }
 
 
 resource "aws_internet_gateway" "cloudx-igw" {
+  
   vpc_id = aws_vpc.cloudx.id
   tags = {
     Name = "cloudx-igw"
   }
 }
 resource "aws_route_table" "public_rt" {
+  
   vpc_id = aws_vpc.cloudx.id
    route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.cloudx-igw.id
+   }
+   tags = {
+     Name = "public_rt"
    }
 }
 
@@ -123,7 +138,7 @@ resource "aws_security_group" "ec2_pool" {
     cidr_blocks = [ "0.0.0.0/0" ]
   }
   tags = {
-    Name = "EC2 pool"
+    Name = "EC2_pool"
   }
 }
 
@@ -145,7 +160,7 @@ resource "aws_security_group" "alb" {
   cidr_blocks = [ "0.0.0.0/0" ]
  }
  tags = {
-    Name = "ALB"
+    Name = "alb"
   }
   
 }
@@ -185,7 +200,7 @@ resource "aws_key_pair" "ghost-ec2-pool" {
 
 resource "aws_instance" "bastion" {
   security_groups = [ aws_security_group.bastion.id ]
-  ami = "ami-067d1e60475437da2"
+  ami = data.aws_ami.ecs_optimized_ami.id
   instance_type = "t2.micro"
   key_name = aws_key_pair.ghost-ec2-pool.id
   subnet_id = aws_subnet.public_a.id
@@ -237,26 +252,27 @@ resource "aws_iam_policy" "test_policy" {
 }
 
 resource "aws_iam_policy_attachment" "attach-role" {
-  name = "test-attachment" 
+  name = "attach-role" 
   roles = [ aws_iam_role.ghost_app.name ]
   policy_arn = aws_iam_policy.test_policy.arn
 }
 
-resource "aws_iam_instance_profile" "test-profile" {
-  name = "test-profile"
+resource "aws_iam_instance_profile" "ghost_appghost_app" {
+  name = "ghost_app"
   role = aws_iam_role.ghost_app.name
 }
 
 ///////////////////////////////////LaunchTemplate//////////////////
 
 
-resource "aws_launch_template" "ghost1" {
+resource "aws_launch_template" "ghost" {
+  name = "ghost"
   instance_type = "t2.micro"
   key_name = aws_key_pair.ghost-ec2-pool.key_name
   user_data = "${base64encode(data.template_file.dns-name.rendered)}"
   image_id = "ami-067d1e60475437da2"
   iam_instance_profile {
-    name = aws_iam_instance_profile.test-profile.name
+    name = aws_iam_instance_profile.ghost_appghost_app.name
   }
   update_default_version = true 
   network_interfaces {
@@ -276,18 +292,17 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
   name = "ghost_ec2_pool"
   capacity_rebalance = true
   min_size = 1
-  desired_capacity = 2
+  desired_capacity = 3
   max_size = 4
   health_check_type = "EC2"
   vpc_zone_identifier = [ "${aws_subnet.public_a.id}","${ aws_subnet.public_b.id}", "${aws_subnet.public_c.id}"]
   launch_template {
-    name = aws_launch_template.ghost1.name
+    name = aws_launch_template.ghost.name
     version = "$Latest"
   }
 }
 /////////////////////////////////////////EFS////////////////////////////////
 resource "aws_efs_file_system" "ghost_content" {
-  
   tags = {
     Name = "ghost_content"
   }
@@ -353,8 +368,18 @@ resource "aws_lb_target_group_attachment" "ec2" {
   target_id = data.aws_instances.ec2-pool.ids[count.index]
 }
 //////////////////////////////////DATA//////////////////////////////
-data "aws_lb" "test" {
+data "aws_lb" "ghost_alb" {
   arn  = aws_lb.epam-lb.arn
+}
+
+data "aws_ami" "ecs_optimized_ami" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-kernel-5.10-hvm-2.0.20231012.1-x86_64-gp2"]
+  }
 }
 
 
@@ -362,7 +387,7 @@ data "template_file" "dns-name" {
   template = "${file("user_data.sh")}"
 
   vars = {
-    dns_name = "${data.aws_lb.test.dns_name}"
+    dns_name = "${data.aws_lb.ghost_alb.dns_name}"
   }
 }
 
@@ -373,6 +398,6 @@ data "aws_instances" "ec2-pool" {
   instance_state_names = [ "running" ]
 }
 ///////////////////////////////OUTPUT//////////////////////
-output "template" {
-  value = data.template_file.dns-name.rendered
+output "ami" {
+  value = data.aws_ami.ecs_optimized_ami.id
 }

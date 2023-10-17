@@ -27,18 +27,14 @@ cat << EOF > config.development.json
 
 {
   "url": "http://${dns_name}",
-  "server": {
+ "server": {
     "port": 2368,
     "host": "0.0.0.0"
   },
   "database": {
-      "client": "mysql",
-      "connection": {
-        "host": "${DB_URL}",
-        "port": 3306,
-        "user": "${DB_USER}",
-        "password": "$DB_PASSWORD",
-        "database": "${DB_NAME}"
+    "client": "sqlite3",
+    "connection": {
+      "filename": "/home/ghost_user/content/data/ghost-local.db"
     }
   },
   "mail": {
@@ -54,6 +50,7 @@ cat << EOF > config.development.json
   "paths": {
     "contentPath": "/home/ghost_user/ghost/content"
   }
+
 }
 EOF
 
